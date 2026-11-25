@@ -49,6 +49,7 @@
                     <ui:BetterRadio RadioChecked="KBStyleChanged" x:Name="bigKeyboard" Height="26" Text="Big Keyboard"/>
                     <ui:BetterRadio RadioChecked="KBStyleChanged" x:Name="smallKeyboard" Height="26" Text="Small Keyboard"/>
                     <ui:BetterRadio RadioChecked="KBStyleChanged" x:Name="noKeyboard" Height="26" Text="No Keyboard"/>
+                    <ui:BetterCheckbox x:Name="neonMode" CheckToggled="NeonMode_CheckToggled" Text="Neon Mode for Notes"/>
                 </StackPanel>
                 <DockPanel>
                     <Label FontSize="14" HorizontalAlignment="Left">
