@@ -63,14 +63,17 @@ void GS_Note(point NOTE input[1], inout TriangleStream<PS_IN> OutputStream)
 
   if(NeonMode != 0)
   {
-    float glowX = 0.006;
-    float glowY = 0.004;
+    cl.xyz = lerp(cl.xyz, colorlConv.xyz, 0.85);
+    cr.xyz = lerp(cr.xyz, colorrConv.xyz, 0.85);
+
+    float glowX = 0.008;
+    float glowY = 0.006;
     float4 glowLeft = colorlConv;
     float4 glowRight = colorrConv;
-    glowLeft.xyz = min(glowLeft.xyz * 2.0, 1.0);
-    glowRight.xyz = min(glowRight.xyz * 2.0, 1.0);
-    glowLeft.w *= 0.12;
-    glowRight.w *= 0.12;
+    glowLeft.xyz = min(glowLeft.xyz * 2.5, 1.0);
+    glowRight.xyz = min(glowRight.xyz * 2.5, 1.0);
+    glowLeft.w *= 0.26;
+    glowRight.w *= 0.26;
 
     v.col = glowLeft;
     v.pos = float4(NoteLeft - glowX, n.start - glowY, 0, 1);

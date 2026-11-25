@@ -168,8 +168,8 @@ namespace Kiva.Graphics
         int noteBufferLength = 1 << 12;
         Buffer noteBuffer;
         const int ParticleCapacity = 4096;
-        const int ParticlesPerImpact = 9;
-        const double ParticleLifetime = 0.75;
+        const int ParticlesPerImpact = 48;
+        const double ParticleLifetime = 0.62;
         readonly List<ActiveParticle> activeParticles = new List<ActiveParticle>();
         readonly ParticleVertex[] particleVertices = new ParticleVertex[ParticleCapacity];
         readonly object particleLock = new object();
@@ -277,11 +277,10 @@ namespace Kiva.Graphics
             }));
 
             particleLayout = dispose.Add(new InputLayout(device, ShaderSignature.GetInputSignature(particleShader.vertexShaderByteCode), new[] {
-                new InputElement("POSITION",0,Format.R32G32_Float,0),
-                new InputElement("VELOCITY",0,Format.R32G32_Float,8),
-                new InputElement("AGE",0,Format.R32_Float,16),
-                new InputElement("SIZE",0,Format.R32_Float,20),
-                new InputElement("COLOR",0,Format.R32_UInt,24),
+                new InputElement("POSITION",0,Format.R32G32_Float,0,0),
+                new InputElement("VELOCITY",0,Format.R32G32_Float,0,1),
+                new InputElement("AGE",0,Format.R32G32_Float,0,2),
+                new InputElement("COLOR",0,Format.R32_UInt,0,3),
             }));
 
             noteConstants = new NotesGlobalConstants()
@@ -638,7 +637,9 @@ namespace Kiva.Graphics
                                             col.rgba = NoteCol.Blend(col.rgba, kcol.rgba);
                                             col.rgba2 = NoteCol.Blend(col.rgba2, kcol.rgba2);
                                             lastHitNote = noff - 1;
-                                            if (!particlesReset &&
+                                            if (settings.General.KeyboardStyle != KeyboardStyle.None &&
+                                                kbHeight > 0 &&
+                                                !particlesReset &&
                                                 time > lastTime &&
                                                 time - lastTime <= Constants.TimeToInt(0.25) &&
                                                 n.start >= lastTime &&
@@ -795,18 +796,21 @@ namespace Kiva.Graphics
             lock (particleLock)
             {
                 if (spawned.Count + ParticlesPerImpact > ParticleCapacity) return;
+                float keyWidth = right - left;
                 for (int i = 0; i < ParticlesPerImpact; i++)
                 {
+                    float spread = NextParticleRandom(ref random);
                     float horizontal = NextParticleRandom(ref random);
                     float upward = NextParticleRandom(ref random);
                     float size = NextParticleRandom(ref random);
+                    bool core = i == 0;
                     spawned.Add(new ActiveParticle()
                     {
-                        x = left + (right - left) * (0.25f + horizontal * 0.5f),
+                        x = (left + right) * 0.5f + (spread - 0.5f) * keyWidth * 0.35f,
                         y = keyboardHeight,
-                        velocityX = (horizontal - 0.5f) * 0.8f,
-                        velocityY = -0.25f - upward * 0.55f,
-                        size = 0.0025f + size * 0.003f,
+                        velocityX = core ? 0 : (horizontal - 0.5f) * keyWidth * 8.0f,
+                        velocityY = core ? 0.25f : 0.35f + upward * 0.9f,
+                        size = core ? 0.0065f : 0.0016f + size * 0.0038f,
                         color = color.rgba,
                         birthTime = (double)note.start / Constants.TicksPerSecond
                     });
@@ -861,7 +865,14 @@ namespace Kiva.Graphics
             data.WriteRange(particleVertices, 0, count);
             context.UnmapSubresource(particleBuffer, 0);
             data.Dispose();
-            context.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(particleBuffer, Marshal.SizeOf(typeof(ParticleVertex)), 0));
+            int particleStride = Marshal.SizeOf(typeof(ParticleVertex));
+            context.InputAssembler.SetVertexBuffers(0, new[]
+            {
+                new VertexBufferBinding(particleBuffer, particleStride, 0),
+                new VertexBufferBinding(particleBuffer, particleStride, 8),
+                new VertexBufferBinding(particleBuffer, particleStride, 16),
+                new VertexBufferBinding(particleBuffer, particleStride, 24)
+            });
             context.Draw(count, 0);
         }
 
