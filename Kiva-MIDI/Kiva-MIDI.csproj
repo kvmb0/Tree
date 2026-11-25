@@ -384,6 +384,7 @@
     <Resource Include="UI\play.png" />
     <Resource Include="UI\pause.png" />
     <EmbeddedResource Include="Notes.fx" />
+    <EmbeddedResource Include="Particles.fx" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="logo.png" />

@@ -6,6 +6,7 @@ float ScreenAspect;
 float KeyboardHeight;
 int ScreenWidth;
 int ScreenHeight;
+int NeonMode;
 
 struct NOTE
 {
@@ -34,7 +35,7 @@ NOTE VS_Note(NOTE input)
   return input;
 }
 
-[maxvertexcount(12)]
+[maxvertexcount(24)]
 void GS_Note(point NOTE input[1], inout TriangleStream<PS_IN> OutputStream)
 {
   NOTE n = input[0];
@@ -59,6 +60,44 @@ void GS_Note(point NOTE input[1], inout TriangleStream<PS_IN> OutputStream)
   cr.xyz -= 0.05f;
   cl.xyz = clamp(cl.xyz, 0, 1);
   cr.xyz = clamp(cr.xyz, 0, 1);
+
+  if(NeonMode != 0)
+  {
+    float glowX = 0.006;
+    float glowY = 0.004;
+    float4 glowLeft = colorlConv;
+    float4 glowRight = colorrConv;
+    glowLeft.xyz = min(glowLeft.xyz * 2.0, 1.0);
+    glowRight.xyz = min(glowRight.xyz * 2.0, 1.0);
+    glowLeft.w *= 0.12;
+    glowRight.w *= 0.12;
+
+    v.col = glowLeft;
+    v.pos = float4(NoteLeft - glowX, n.start - glowY, 0, 1);
+    v.pos.xy = v.pos.xy * 2 - 1;
+    OutputStream.Append(v);
+    v.pos = float4(NoteLeft - glowX, n.end + glowY, 0, 1);
+    v.pos.xy = v.pos.xy * 2 - 1;
+    OutputStream.Append(v);
+    v.col = glowRight;
+    v.pos = float4(NoteRight + glowX, n.end + glowY, 0, 1);
+    v.pos.xy = v.pos.xy * 2 - 1;
+    OutputStream.Append(v);
+    OutputStream.RestartStrip();
+
+    v.col = glowRight;
+    v.pos = float4(NoteRight + glowX, n.end + glowY, 0, 1);
+    v.pos.xy = v.pos.xy * 2 - 1;
+    OutputStream.Append(v);
+    v.pos = float4(NoteRight + glowX, n.start - glowY, 0, 1);
+    v.pos.xy = v.pos.xy * 2 - 1;
+    OutputStream.Append(v);
+    v.col = glowLeft;
+    v.pos = float4(NoteLeft - glowX, n.start - glowY, 0, 1);
+    v.pos.xy = v.pos.xy * 2 - 1;
+    OutputStream.Append(v);
+    OutputStream.RestartStrip();
+  }
 
   v.col = cl;
   v.pos = float4(NoteLeft, n.start, 0, 1);

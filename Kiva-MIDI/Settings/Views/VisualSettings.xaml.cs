@@ -55,6 +55,7 @@ namespace Kiva.Settings.Views
             if (style == KeyboardStyle.Big) bigKeyboard.IsChecked = true;
             if (style == KeyboardStyle.Small) smallKeyboard.IsChecked = true;
             if (style == KeyboardStyle.None) noKeyboard.IsChecked = true;
+            neonMode.IsChecked = settings.General.NeonMode;
 
             fpsLock.Value = settings.General.FPSLock;
             //compatibilityFps.IsChecked = settings.General.CompatibilityFPS;
@@ -173,6 +174,12 @@ namespace Kiva.Settings.Views
             if (!IsInitialized) return;
             settings.General.SyncFPS = syncFps.IsChecked;
             fpsLock.IsEnabled = !syncFps.IsChecked;
+        }
+
+        private void NeonMode_CheckToggled(object sender, RoutedPropertyChangedEventArgs<bool> e)
+        {
+            if (!IsInitialized) return;
+            settings.General.NeonMode = neonMode.IsChecked;
         }
     }
 }

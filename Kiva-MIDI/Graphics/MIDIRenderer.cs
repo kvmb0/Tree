@@ -32,6 +32,7 @@ namespace Kiva.Graphics
             public float KeyboardHeight;
             public int ScreenWidth;
             public int ScreenHeight;
+            public int NeonMode;
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 16)]
@@ -52,6 +53,38 @@ namespace Kiva.Graphics
             public float start;
             public float end;
             public NoteCol color;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct ParticleVertex
+        {
+            public float x;
+            public float y;
+            public float velocityX;
+            public float velocityY;
+            public float age;
+            public float size;
+            public uint color;
+        }
+
+        struct ActiveParticle
+        {
+            public float x;
+            public float y;
+            public float velocityX;
+            public float velocityY;
+            public float size;
+            public uint color;
+            public double birthTime;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 16)]
+        struct ParticleGlobalConstants
+        {
+            public float ScreenAspect;
+            public float Padding1;
+            public float Padding2;
+            public float Padding3;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -121,15 +154,26 @@ namespace Kiva.Graphics
         ShaderManager BigWhiteKeyShader;
         ShaderManager BigBlackKeyShader;
         ShaderManager BigBarShader;
+        ShaderManager particleShader;
         InputLayout noteLayout;
         InputLayout keyLayout;
+        InputLayout particleLayout;
         Buffer globalNoteConstants;
+        Buffer particleConstants;
+        Buffer particleBuffer;
         Buffer keyBuffer;
 
         NotesGlobalConstants noteConstants;
 
         int noteBufferLength = 1 << 12;
         Buffer noteBuffer;
+        const int ParticleCapacity = 4096;
+        const int ParticlesPerImpact = 9;
+        const double ParticleLifetime = 0.75;
+        readonly List<ActiveParticle> activeParticles = new List<ActiveParticle>();
+        readonly ParticleVertex[] particleVertices = new ParticleVertex[ParticleCapacity];
+        readonly object particleLock = new object();
+        MIDIFile particleFile;
 
         VelocityEase dynamicState = new VelocityEase(0) { Duration = 0.7, Slope = 3, Supress = 2 };
         bool dynamicState88 = false;
@@ -172,6 +216,14 @@ namespace Kiva.Graphics
                 ShaderBytecode.Compile(noteShaderData, "VS_Note", "vs_4_0", ShaderFlags.None, EffectFlags.None),
                 ShaderBytecode.Compile(noteShaderData, "PS", "ps_4_0", ShaderFlags.None, EffectFlags.None),
                 ShaderBytecode.Compile(noteShaderData, "GS_Note", "gs_4_0", ShaderFlags.None, EffectFlags.None)
+            ));
+
+            string particleShaderData = GetShaderCode("Particles.fx", "Kiva.Particles.fx");
+            particleShader = dispose.Add(new ShaderManager(
+                device,
+                ShaderBytecode.Compile(particleShaderData, "VS_Particle", "vs_4_0", ShaderFlags.None, EffectFlags.None),
+                ShaderBytecode.Compile(particleShaderData, "PS_Particle", "ps_4_0", ShaderFlags.None, EffectFlags.None),
+                ShaderBytecode.Compile(particleShaderData, "GS_Particle", "gs_4_0", ShaderFlags.None, EffectFlags.None)
             ));
 
             string keyboardSmallShaderData = GetShaderCode("KeyboardSmall.fx", "Kiva.KeyboardSmall.fx");
@@ -224,6 +276,14 @@ namespace Kiva.Graphics
                 new InputElement("META",0,Format.R32_UInt,0),
             }));
 
+            particleLayout = dispose.Add(new InputLayout(device, ShaderSignature.GetInputSignature(particleShader.vertexShaderByteCode), new[] {
+                new InputElement("POSITION",0,Format.R32G32_Float,0),
+                new InputElement("VELOCITY",0,Format.R32G32_Float,8),
+                new InputElement("AGE",0,Format.R32_Float,16),
+                new InputElement("SIZE",0,Format.R32_Float,20),
+                new InputElement("COLOR",0,Format.R32_UInt,24),
+            }));
+
             noteConstants = new NotesGlobalConstants()
             {
                 NoteBorder = 0.002f,
@@ -258,6 +318,26 @@ namespace Kiva.Graphics
                 CpuAccessFlags = CpuAccessFlags.Write,
                 OptionFlags = ResourceOptionFlags.None,
                 SizeInBytes = 32,
+                Usage = ResourceUsage.Dynamic,
+                StructureByteStride = 0
+            }));
+
+            particleConstants = dispose.Add(new Buffer(device, new BufferDescription()
+            {
+                BindFlags = BindFlags.ConstantBuffer,
+                CpuAccessFlags = CpuAccessFlags.Write,
+                OptionFlags = ResourceOptionFlags.None,
+                SizeInBytes = 16,
+                Usage = ResourceUsage.Dynamic,
+                StructureByteStride = 0
+            }));
+
+            particleBuffer = dispose.Add(new Buffer(device, new BufferDescription()
+            {
+                BindFlags = BindFlags.VertexBuffer,
+                CpuAccessFlags = CpuAccessFlags.Write,
+                OptionFlags = ResourceOptionFlags.None,
+                SizeInBytes = Marshal.SizeOf(typeof(ParticleVertex)) * ParticleCapacity,
                 Usage = ResourceUsage.Dynamic,
                 StructureByteStride = 0
             }));
@@ -402,6 +482,14 @@ namespace Kiva.Graphics
             context.InputAssembler.InputLayout = noteLayout;
 
             double time = Time.GetTimeInt();
+            double timeInSeconds = time / Constants.TicksPerSecond;
+            bool particlesReset = timeChanged;
+            if (particlesReset || !ReferenceEquals(particleFile, File))
+            {
+                activeParticles.Clear();
+                particleFile = File;
+            }
+            var spawnedParticles = new List<ActiveParticle>();
             double timeScale = Constants.TimeToInt(settings.Volatile.Size);
             double renderCutoff = time + timeScale;
             int firstNote = 0;
@@ -446,6 +534,7 @@ namespace Kiva.Graphics
             noteConstants.NoteBorder = 0.0015f;
             noteConstants.ScreenWidth = (int)args.RenderSize.Width;
             noteConstants.ScreenHeight = (int)args.RenderSize.Height;
+            noteConstants.NeonMode = settings.General.NeonMode ? 1 : 0;
             SetNoteShaderConstants(context, noteConstants);
 
             //context.ClearRenderTargetView(target, new Color4(0.4f, 0.4f, 0.4f, 1f));
@@ -549,6 +638,14 @@ namespace Kiva.Graphics
                                             col.rgba = NoteCol.Blend(col.rgba, kcol.rgba);
                                             col.rgba2 = NoteCol.Blend(col.rgba2, kcol.rgba2);
                                             lastHitNote = noff - 1;
+                                            if (!particlesReset &&
+                                                time > lastTime &&
+                                                time - lastTime <= Constants.TimeToInt(0.25) &&
+                                                n.start >= lastTime &&
+                                                n.start < time)
+                                            {
+                                                AddImpactParticles(spawnedParticles, k, left, right, kbHeight, n, colors[n.colorPointer]);
+                                            }
                                         }
                                         _notesRendered++;
                                         rn[nid++] = new RenderNote()
@@ -645,6 +742,10 @@ namespace Kiva.Graphics
                 }
             }
 
+            activeParticles.AddRange(spawnedParticles);
+            if (activeParticles.Count > ParticleCapacity)
+                activeParticles.RemoveRange(0, activeParticles.Count - ParticleCapacity);
+
             if (settings.General.KeyboardStyle != KeyboardStyle.None)
             {
                 DataStream data;
@@ -684,6 +785,84 @@ namespace Kiva.Graphics
                     context.Draw(kblastNote - kbfirstNote, kbfirstNote);
                 }
             }
+
+            RenderParticles(context, timeInSeconds, args.RenderSize.Width, args.RenderSize.Height);
+        }
+
+        void AddImpactParticles(List<ActiveParticle> spawned, int key, float left, float right, float keyboardHeight, Note note, NoteCol color)
+        {
+            uint random = unchecked((uint)note.start * 747796405u + (uint)key * 2891336453u + 277803737u);
+            lock (particleLock)
+            {
+                if (spawned.Count + ParticlesPerImpact > ParticleCapacity) return;
+                for (int i = 0; i < ParticlesPerImpact; i++)
+                {
+                    float horizontal = NextParticleRandom(ref random);
+                    float upward = NextParticleRandom(ref random);
+                    float size = NextParticleRandom(ref random);
+                    spawned.Add(new ActiveParticle()
+                    {
+                        x = left + (right - left) * (0.25f + horizontal * 0.5f),
+                        y = keyboardHeight,
+                        velocityX = (horizontal - 0.5f) * 0.8f,
+                        velocityY = -0.25f - upward * 0.55f,
+                        size = 0.0025f + size * 0.003f,
+                        color = color.rgba,
+                        birthTime = (double)note.start / Constants.TicksPerSecond
+                    });
+                }
+            }
+        }
+
+        static float NextParticleRandom(ref uint state)
+        {
+            state = unchecked(state * 1664525u + 1013904223u);
+            return (state & 0x00ffffff) / 16777216.0f;
+        }
+
+        void RenderParticles(DeviceContext context, double timeInSeconds, double width, double height)
+        {
+            int count = 0;
+            for (int i = activeParticles.Count - 1; i >= 0; i--)
+            {
+                var particle = activeParticles[i];
+                double age = timeInSeconds - particle.birthTime;
+                if (age < 0 || age >= ParticleLifetime)
+                {
+                    activeParticles.RemoveAt(i);
+                    continue;
+                }
+                particleVertices[count++] = new ParticleVertex()
+                {
+                    x = particle.x,
+                    y = particle.y,
+                    velocityX = particle.velocityX,
+                    velocityY = particle.velocityY,
+                    age = (float)age,
+                    size = particle.size,
+                    color = particle.color
+                };
+            }
+            if (count == 0 || width <= 0 || height <= 0) return;
+
+            DataStream data;
+            context.MapSubresource(particleConstants, 0, MapMode.WriteDiscard, SharpDX.Direct3D11.MapFlags.None, out data);
+            data.Write(new ParticleGlobalConstants() { ScreenAspect = (float)(height / width) });
+            context.UnmapSubresource(particleConstants, 0);
+            data.Dispose();
+
+            context.VertexShader.SetConstantBuffer(0, particleConstants);
+            context.GeometryShader.SetConstantBuffer(0, particleConstants);
+            particleShader.SetShaders(context);
+            context.InputAssembler.InputLayout = particleLayout;
+            context.InputAssembler.PrimitiveTopology = PrimitiveTopology.PointList;
+            context.MapSubresource(particleBuffer, 0, MapMode.WriteDiscard, SharpDX.Direct3D11.MapFlags.None, out data);
+            data.Position = 0;
+            data.WriteRange(particleVertices, 0, count);
+            context.UnmapSubresource(particleBuffer, 0);
+            data.Dispose();
+            context.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(particleBuffer, Marshal.SizeOf(typeof(ParticleVertex)), 0));
+            context.Draw(count, 0);
         }
 
         bool singleThreaded = false;
