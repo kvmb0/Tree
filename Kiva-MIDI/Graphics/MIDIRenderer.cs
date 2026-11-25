@@ -168,7 +168,7 @@ namespace Kiva.Graphics
         int noteBufferLength = 1 << 12;
         Buffer noteBuffer;
         const int ParticleCapacity = 4096;
-        const int ParticlesPerImpact = 24;
+        const int ParticlesPerImpact = 48;
         const double ParticleLifetime = 0.62;
         readonly List<ActiveParticle> activeParticles = new List<ActiveParticle>();
         readonly ParticleVertex[] particleVertices = new ParticleVertex[ParticleCapacity];

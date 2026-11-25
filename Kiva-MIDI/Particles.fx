@@ -73,7 +73,6 @@ float4 PS_Particle(GS_OUT input) : SV_Target
   float fade = saturate(1 - input.age / 0.62);
   float glow = pow(spark, 1.25) * fade;
   float core = pow(spark, 3.0);
-  float3 emberColor = lerp(input.color.rgb, float3(1, 0.32, 0.06), 0.4);
-  emberColor = lerp(emberColor, float3(1, 0.92, 0.58), core * 0.7);
-  return float4(emberColor, input.color.a * glow);
+  float3 sparkColor = saturate(input.color.rgb * (1.25 + core * 0.75));
+  return float4(sparkColor, input.color.a * glow);
 }
