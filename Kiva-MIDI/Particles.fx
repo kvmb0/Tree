@@ -5,8 +5,7 @@ struct PARTICLE
 {
   float2 position : POSITION;
   float2 velocity : VELOCITY;
-  float age : AGE;
-  float size : SIZE;
+  float2 ageAndSize : AGE;
   uint color : COLOR;
 };
 
@@ -29,11 +28,11 @@ struct GS_OUT
 VS_OUT VS_Particle(PARTICLE input)
 {
   VS_OUT output;
-  float2 position = input.position + input.velocity * input.age;
-  position.y += 0.32 * input.age * input.age;
+  float2 position = input.position + input.velocity * input.ageAndSize.x;
+  position.y += 0.32 * input.ageAndSize.x * input.ageAndSize.x;
   output.position = float4(position.x * 2 - 1, 1 - position.y * 2, 0, 1);
-  output.age = input.age;
-  output.size = input.size;
+  output.age = input.ageAndSize.x;
+  output.size = input.ageAndSize.y;
   output.color = float4(
     (input.color >> 24 & 0xff) / 255.0,
     (input.color >> 16 & 0xff) / 255.0,

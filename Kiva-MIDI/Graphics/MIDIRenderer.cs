@@ -277,11 +277,10 @@ namespace Kiva.Graphics
             }));
 
             particleLayout = dispose.Add(new InputLayout(device, ShaderSignature.GetInputSignature(particleShader.vertexShaderByteCode), new[] {
-                new InputElement("POSITION",0,Format.R32G32_Float,0),
-                new InputElement("VELOCITY",0,Format.R32G32_Float,8),
-                new InputElement("AGE",0,Format.R32_Float,16),
-                new InputElement("SIZE",0,Format.R32_Float,20),
-                new InputElement("COLOR",0,Format.R32_UInt,24),
+                new InputElement("POSITION",0,Format.R32G32_Float,0,0),
+                new InputElement("VELOCITY",0,Format.R32G32_Float,0,1),
+                new InputElement("AGE",0,Format.R32G32_Float,0,2),
+                new InputElement("COLOR",0,Format.R32_UInt,0,3),
             }));
 
             noteConstants = new NotesGlobalConstants()
@@ -861,7 +860,14 @@ namespace Kiva.Graphics
             data.WriteRange(particleVertices, 0, count);
             context.UnmapSubresource(particleBuffer, 0);
             data.Dispose();
-            context.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(particleBuffer, Marshal.SizeOf(typeof(ParticleVertex)), 0));
+            int particleStride = Marshal.SizeOf(typeof(ParticleVertex));
+            context.InputAssembler.SetVertexBuffers(0, new[]
+            {
+                new VertexBufferBinding(particleBuffer, particleStride, 0),
+                new VertexBufferBinding(particleBuffer, particleStride, 8),
+                new VertexBufferBinding(particleBuffer, particleStride, 16),
+                new VertexBufferBinding(particleBuffer, particleStride, 24)
+            });
             context.Draw(count, 0);
         }
 
